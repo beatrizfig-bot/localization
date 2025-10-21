@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Locale Renamer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #4A154B;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #007bff;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background-color: #f0f8ff;
+        }
+        .locale-input {
+            margin: 20px 0;
+        }
+        .locale-input label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .locale-input textarea {
+            width: 100%;
+            height: 80px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: monospace;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        .file-list {
+            margin: 20px 0;
+        }
+        .file-item {
+            padding: 10px;
+            border: 1px solid #eee;
+            margin: 5px 0;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .original-name {
+            color: #333;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .renamed-files {
+            margin-left: 20px;
+        }
+        .renamed-file {
+            color: #007bff;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin: 2px 0;
+        }
+        .error {
+            color: #dc3545;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        .supported-formats {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 10px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .stats {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .button-group {
+            margin: 20px 0;
+        }
+        .download-note {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>File Locale Renamer</h1>
+        <p>Upload files and generate renamed versions with locale codes</p>
+        
+        <div class="locale-input">
+            <label for="localeList">Locale Codes (comma-separated):</label>
+            <textarea id="localeList" placeholder="Edit locales here...">en-GB, de-DE, es-ES, es-LA, fr-FR, ja-JP, pt-BR, ko-KR, it-IT, zh-CN, zh-TW, IN</textarea>
+            <div class="supported-formats">
+                <strong>Supported formats:</strong> PNG, JPEG, JPG, MP4, WEBM
+            </div>
+        </div>
+        
+        <div class="upload-area" id="uploadArea">
+            <p>Drop files here or click to select</p>
+            <p style="font-size: 0.9em; color: #666;">Only PNG, JPEG, JPG, MP4, WEBM files will be processed</p>
+            <input type="file" id="fileInput" multiple accept=".png,.jpg,.jpeg,.mp4,.webm" style="display: none;">
+        </div>
+        
+        <div class="file-list" id="fileList"></div>
+        
+        <div class="stats" id="stats" style="display: none;"></div>
+        
+        <div class="button-group">
+            <button id="previewBtn" disabled>Preview Changes (Optional)</button>
+            <button id="downloadBtn" disabled>Download Renamed Files (ZIP)</button>
+            <button id="clearBtn">Clear All</button>
+        </div>
+        
+        <div class="download-note">
+            <strong>Note:</strong> You can download the renamed files directly without previewing first.
+        </div>
+    </div>
+
+    <script>
+        class FileLocaleRenamer {
+            constructor() {
+                this.files = [];
+                this.supportedFormats = ['png', 'jpg', 'jpeg', 'mp4', 'webm'];
+                this.initializeEventListeners();
+            }
+            
+            initializeEventListeners() {
+                const uploadArea = document.getElementById('uploadArea');
+                const fileInput = document.getElementById('fileInput');
+                const previewBtn = document.getElementById('previewBtn');
+                const downloadBtn = document.getElementById('downloadBtn');
+                const clearBtn = document.getElementById('clearBtn');
+                const localeList = document.getElementById('localeList');
+                
+                // File upload handling
+                uploadArea.addEventListener('click', () => fileInput.click());
+                uploadArea.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.add('dragover');
+                });
+                uploadArea.addEventListener('dragleave', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.remove('dragover');
+                });
+                uploadArea.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadArea.classList.remove('dragover');
+                    this.handleFiles(e.dataTransfer.files);
+                });
+                fileInput.addEventListener('change', (e) => {
+                    this.handleFiles(e.target.files);
+                });
+                
+                // Button handlers
+                previewBtn.addEventListener('click', () => this.previewChanges());
+                downloadBtn.addEventListener('click', () => this.downloadFiles());
+                clearBtn.addEventListener('click', () => this.clearFiles());
+                
+                // Auto-update preview if it's already shown
+                localeList.addEventListener('input', () => {
+                    const statsDiv = document.getElementById('stats');
+                    if (this.files.length > 0 && statsDiv.style.display !== 'none') {
+                        this.previewChanges();
+                    }
+                });
+            }
+            
+            handleFiles(fileList) {
+                const validFiles = Array.from(fileList).filter(file => {
+                    const extension = file.name.split('.').pop().toLowerCase();
+                    return this.supportedFormats.includes(extension);
+                });
+                
+                if (validFiles.length === 0) {
+                    alert('No supported files found. Please upload PNG, JPEG, JPG, MP4, or WEBM files.');
+                    return;
+                }
+                
+                if (validFiles.length < fileList.length) {
+                    const skipped = fileList.length - validFiles.length;
+                    alert(`${skipped} file(s) skipped. Only PNG, JPEG, JPG, MP4, and WEBM files are supported.`);
+                }
+                
+                this.files = validFiles;
+                this.updateFileList();
+                // Enable both preview and download buttons when files are uploaded
+                document.getElementById('previewBtn').disabled = false;
+                document.getElementById('downloadBtn').disabled = false;
+            }
+            
+            getLocaleCodes() {
+                const localeText = document.getElementById('localeList').value;
+                return localeText
+                    .split(',')
+                    .map(locale => locale.trim())
+                    .filter(locale => locale.length > 0);
+            }
+            
+            generateNewFileName(originalName, localeCode) {
+                const lastDotIndex = originalName.lastIndexOf('.');
+                
+                if (lastDotIndex === -1) {
+                    // No extension (shouldn't happen with our supported formats)
+                    return `${originalName}.${localeCode}`;
+                }
+                
+                const nameWithoutExt = originalName.substring(0, lastDotIndex);
+                const extension = originalName.substring(lastDotIndex);
+                
+                // Check for @2x pattern
+                const retinaSuffix = '@2x';
+                if (nameWithoutExt.endsWith(retinaSuffix)) {
+                    const baseNameWithoutRetina = nameWithoutExt.substring(0, nameWithoutExt.length - retinaSuffix.length);
+                    return `${baseNameWithoutRetina}.${localeCode}${retinaSuffix}${extension}`;
+                } else {
+                    return `${nameWithoutExt}.${localeCode}${extension}`;
+                }
+            }
+            
+            previewChanges() {
+                const localeCodes = this.getLocaleCodes();
+                if (localeCodes.length === 0) {
+                    alert('Please enter at least one locale code');
+                    return;
+                }
+                
+                const fileListDiv = document.getElementById('fileList');
+                fileListDiv.innerHTML = '<h3>Preview:</h3>';
+                
+                let totalRenamedFiles = 0;
+                
+                this.files.forEach(file => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    
+                    const originalDiv = document.createElement('div');
+                    originalDiv.className = 'original-name';
+                    originalDiv.textContent = `📁 ${file.name}`;
+                    
+                    const renamedDiv = document.createElement('div');
+                    renamedDiv.className = 'renamed-files';
+                    
+                    localeCodes.forEach(localeCode => {
+                        const newName = this.generateNewFileName(file.name, localeCode);
+                        const renamedFile = document.createElement('div');
+                        renamedFile.className = 'renamed-file';
+                        renamedFile.textContent = `→ ${newName}`;
+                        renamedDiv.appendChild(renamedFile);
+                        totalRenamedFiles++;
+                    });
+                    
+                    fileItem.appendChild(originalDiv);
+                    fileItem.appendChild(renamedDiv);
+                    fileListDiv.appendChild(fileItem);
+                });
+                
+                // Update stats
+                const statsDiv = document.getElementById('stats');
+                statsDiv.style.display = 'block';
+                statsDiv.innerHTML = `
+                    <strong>Summary:</strong><br>
+                    Original files: ${this.files.length}<br>
+                    Locales: ${localeCodes.length} (${localeCodes.join(', ')})<br>
+                    Total renamed files to be generated: ${totalRenamedFiles}
+                `;
+            }
+            
+            async downloadFiles() {
+                const localeCodes = this.getLocaleCodes();
+                if (localeCodes.length === 0) {
+                    alert('Please enter at least one locale code');
+                    return;
+                }
+                
+                // Load JSZip if not already loaded
+                const JSZip = window.JSZip ? window.JSZip : await this.loadJSZip();
+                const zip = new JSZip();
+                
+                // Add renamed files to zip
+                for (const file of this.files) {
+                    for (const localeCode of localeCodes) {
+                        const newName = this.generateNewFileName(file.name, localeCode);
+                        zip.file(newName, file);
+                    }
+                }
+                
+                // Generate and download zip
+                const content = await zip.generateAsync({type: 'blob'});
+                const url = URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `renamed_files_${new Date().toISOString().slice(0,10)}_${Date.now()}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            async loadJSZip() {
+                return new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                    script.onload = () => resolve(window.JSZip);
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
+            }
+            
+            updateFileList() {
+                const fileListDiv = document.getElementById('fileList');
+                const statsDiv = document.getElementById('stats');
+                
+                if (this.files.length === 0) {
+                    fileListDiv.innerHTML = '';
+                    statsDiv.style.display = 'none';
+                    return;
+                }
+                
+                fileListDiv.innerHTML = `<h3>Selected Files (${this.files.length}):</h3>`;
+                this.files.forEach(file => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    fileItem.innerHTML = `
+                        <div class="original-name">${file.name}</div>
+                        <div style="font-size: 0.9em; color: #666;">
+                            ${this.formatFileSize(file.size)} • ${file.type || 'Unknown type'}
+                        </div>
+                    `;
+                    fileListDiv.appendChild(fileItem);
+                });
+            }
+            
+            formatFileSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+            
+            clearFiles() {
+                this.files = [];
+                document.getElementById('fileInput').value = '';
+                document.getElementById('fileList').innerHTML = '';
+                document.getElementById('stats').style.display = 'none';
+                document.getElementById('previewBtn').disabled = true;
+                document.getElementById('downloadBtn').disabled = true;
+                
+                // Reset locale list to default
+                document.getElementById('localeList').value = 'en-GB, de-DE, es-ES, es-LA, fr-FR, ja-JP, pt-BR, ko-KR, it-IT, zh-CN, zh-TW, IN';
+            }
+        }
+        
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', () => {
+            new FileLocaleRenamer();
+        });
+    </script>
+</body>
+</html>
